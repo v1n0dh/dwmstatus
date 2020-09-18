@@ -155,6 +155,7 @@ gettemperature(char *base, char *sensor)
 	co = readfile(base, sensor);
 	if (co == NULL)
 		return smprintf("");
+
 	return smprintf("%02.0f°C", atof(co) / 1000);
 }
 
@@ -165,7 +166,7 @@ getmemstatus()
 	char buf[16];
 	char cmd[64];
 
-	sprintf(cmd, "free -m | grep ^M | awk {'print ($3/$2)*100'}");
+	snprintf(cmd, 64, "free -m | grep ^M | awk {'print ($3/$2)*100'}");
 
 	pd = popen(cmd, "r");
 	if (pd == NULL)
@@ -183,15 +184,20 @@ getwifistatus()
 {
 	FILE *pd;
 	char buf[24];
-	char cmd[72];
+	char cmd[64];
 
-	sprintf(cmd, "nmcli device status | grep wlp1s0 | awk {'print $4'} | tr '\n' ' '");
+	snprintf(cmd, 64, "iwgetid | sed 's/.*:\"//; s/\"$//; /^$/d' ");
 
 	pd = popen(cmd, "r");
 	if (pd == NULL)
 		return smprintf("");
 
+	memset(buf, '\0', sizeof(buf));
 	fgets(buf, 24, pd);
+	int len = strlen(buf);
+	if (len == 0)
+		return smprintf("--");
+	buf[len-1] = '\0';
 
 	pclose(pd);
 
@@ -256,7 +262,7 @@ main(void)
 		rx_bytes = (rx - old_rx) / 1024;
 		tx_bytes = (tx - old_tx) / 1024;
 
-		status = smprintf("Net: %dKB/%dKB | Wifi: %s| Temp: %s | Mem: %s | Bat: %s | %s ",
+		status = smprintf("Net: %dKB/%dKB | Wifi: %s | Temp: %s | Mem: %s | Bat: %s | %s ",
 				 tx_bytes, rx_bytes, wifi, temp, mem, bat, tmin);
 		setstatus(status);
 
@@ -275,4 +281,3 @@ main(void)
 
 	return 0;
 }
-
