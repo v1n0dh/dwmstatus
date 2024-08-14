@@ -42,6 +42,11 @@ install: all
 	@cp -f ${NAME} ${DESTDIR}${PREFIX}/bin
 	@chmod 755 ${DESTDIR}${PREFIX}/bin/${NAME}
 
+localinstall: all
+	mkdir -p ${HOME}/.bin
+	cp -f dwmstatus ${HOME}/.bin
+	chmod 755 ${HOME}/.bin/dwm
+
 uninstall:
 	@echo removing executable file from ${DESTDIR}${PREFIX}/bin
 	@rm -f ${DESTDIR}${PREFIX}/bin/${NAME}
