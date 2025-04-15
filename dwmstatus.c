@@ -17,7 +17,7 @@
 
 #include <X11/Xlib.h>
 
-char *tzindia = "Asia/Kolkata";
+char *tzindia = "UTC";
 int rx_old = 0, tx_old = 0;
 
 static Display *dpy;
@@ -173,8 +173,10 @@ getmemstatus()
 	snprintf(cmd, 64, "free -m | grep ^M | awk {'print ($3/$2)*100'}");
 
 	pd = popen(cmd, "r");
-	if (pd == NULL)
+	if (pd == NULL) {
+		pclose(pd);
 		return smprintf("%s ", mem_icon);
+	}
 
 	fgets(buf, 16, pd);
 
@@ -184,24 +186,28 @@ getmemstatus()
 }
 
 char *
-getwifistatus()
+getwifistatus(char *iface)
 {
 	FILE *pd;
 	char buf[24];
 	char cmd[64];
 	char *status_icon;
 
+	memset(cmd, '\0', sizeof(cmd));
 	snprintf(cmd, 64, "iwgetid | sed 's/.*:\"//; s/\"$//; /^$/d' ");
 
 	pd = popen(cmd, "r");
-	if (pd == NULL)
+	if (pd == NULL) {
+		pclose(pd);
 		return smprintf("");
+	}
 
 	memset(buf, '\0', sizeof(buf));
 	fgets(buf, 24, pd);
 	int len = strlen(buf);
 	if (len == 0) {
 		status_icon = "🌐";
+		pclose(pd);
 		return smprintf("%s --", status_icon);
 	}
 	buf[len-1] = '\0';
