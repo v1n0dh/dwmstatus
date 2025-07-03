@@ -14,10 +14,16 @@
 #include <time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <ifaddrs.h>
+#include <linux/wireless.h>
 
 #include <X11/Xlib.h>
 
-char *tzindia = "UTC";
+char *tzindia = "US/Pacific";
 int rx_old = 0, tx_old = 0;
 
 static Display *dpy;
@@ -174,7 +180,6 @@ getmemstatus()
 
 	pd = popen(cmd, "r");
 	if (pd == NULL) {
-		pclose(pd);
 		return smprintf("%s ", mem_icon);
 	}
 
@@ -188,34 +193,51 @@ getmemstatus()
 char *
 getwifistatus(char *iface)
 {
-	FILE *pd;
-	char buf[24];
-	char cmd[64];
+	int sockfd;
+	struct iwreq wreq;
+	char *id;
 	char *status_icon;
-
-	memset(cmd, '\0', sizeof(cmd));
-	snprintf(cmd, 64, "iwgetid | sed 's/.*:\"//; s/\"$//; /^$/d' ");
-
-	pd = popen(cmd, "r");
-	if (pd == NULL) {
-		pclose(pd);
-		return smprintf("");
-	}
+	char buf[24];
 
 	memset(buf, '\0', sizeof(buf));
-	fgets(buf, 24, pd);
-	int len = strlen(buf);
-	if (len == 0) {
-		status_icon = "🌐";
-		pclose(pd);
-		return smprintf("%s --", status_icon);
-	}
-	buf[len-1] = '\0';
+	memset(&wreq, '\0', sizeof(struct iwreq));
 
-	pclose(pd);
+	snprintf(wreq.ifr_name, IFNAMSIZ, iface);
+
+	if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+		fprintf(stderr, "Failed to create socket\n");
+		status_icon = "🌐";
+		snprintf(buf, sizeof(buf), "---");
+		goto returnwifistatus;
+	}
+
+	id = malloc(IW_ESSID_MAX_SIZE+1);
+	memset(id, '\0', IW_ESSID_MAX_SIZE+1);
+
+	wreq.u.essid.pointer = id;
+	wreq.u.essid.length = IW_ESSID_MAX_SIZE;
+
+	if (ioctl(sockfd, SIOCGIWESSID, &wreq) < 0) {
+		fprintf(stderr, "Ioctl failed to get essid\n");
+		status_icon = "🌐";
+		snprintf(buf, sizeof(buf), "---");
+		goto returnwifistatus;
+	}
+
+	snprintf(buf, sizeof(buf), "%s", (char *)(wreq.u.essid.pointer));
+	if (strncmp(buf, "", sizeof(buf)) == 0) {
+		status_icon = "🌐";
+		snprintf(buf, sizeof(buf), "---");
+		goto returnwifistatus;
+	}
 
 	status_icon = "🛜";
-	return smprintf("%s %s", status_icon, buf);
+
+	free(id);
+	close(sockfd);
+
+returnwifistatus:
+	return smprintf("%s %s [%s]", status_icon, buf, iface);
 }
 
 int
@@ -229,6 +251,7 @@ getrxbytes(char *iface)
 	if (rbytes == NULL)
 		return 0;
 
+	free(base);
 	return atoi(rbytes);
 }
 
@@ -243,6 +266,7 @@ gettxbytes(char *iface)
 	if (tbytes == NULL)
 		return 0;
 
+	free(base);
 	return atoi(tbytes);
 }
 
@@ -283,6 +307,40 @@ getnetworkspeed(char *interface)
 }
 
 int
+check__for_iface(char *iface)
+{
+	struct ifaddrs *ifaddr, *ifa;
+	if (getifaddrs(&ifaddr) == -1) {
+		fprintf(stderr, "Error at getifaddrs");
+		return 0;
+	}
+
+	// loop through the linked list of ifaddrs to find iface
+	for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+		if (ifa->ifa_addr == NULL || ifa->ifa_addr->sa_family != AF_PACKET ||
+				ifa->ifa_name == NULL)
+			continue;
+
+		if (strncmp(ifa->ifa_name, iface, IFNAMSIZ) == 0)
+			return 1;
+	}
+
+	freeifaddrs(ifaddr);
+	return 0;
+}
+
+int
+check_iface_up(char *iface)
+{
+	char *base, *status;
+
+	base = smprintf("/sys/class/net/%s", iface);
+	status = readfile(base, "operstate");
+
+	return (strncmp(status, "up", 2) == 0) ? 1 : 0;
+}
+
+int
 main(void)
 {
 	char *status;
@@ -292,6 +350,7 @@ main(void)
 	char *mem;
 	char *wifi;
 	char *netspeed;
+	char *iface_name;
 
 	if (!(dpy = XOpenDisplay(NULL))) {
 		fprintf(stderr, "dwmstatus: cannot open display.\n");
@@ -301,14 +360,18 @@ main(void)
 	for (;;sleep(1)) {
 		bat = getbattery("/sys/class/power_supply/BAT0");
 		tmin = mktimes("%a %b %d %I:%M%p", tzindia);
-		temp = gettemperature("/sys/class/thermal/thermal_zone0/hwmon1/", "temp1_input");
+		temp = gettemperature("/sys/class/thermal/thermal_zone0/hwmon2/", "temp1_input");
 		mem = getmemstatus();
-		wifi = getwifistatus();
-		netspeed = getnetworkspeed("wlp1s0");
 
-		status = smprintf(" %s | %s | %s | %s | %s | %s |",
+		iface_name = check__for_iface("alpha0") && check_iface_up("alpha0") ? "alpha0" : "wlp1s0";
+		wifi = getwifistatus(iface_name);
+		netspeed = getnetworkspeed(iface_name);
+
+		status = smprintf(" %s | %s | %s | %s | %s | %s|",
 				netspeed, wifi, temp, mem, bat, tmin);
 		setstatus(status);
+
+		iface_name = NULL;
 
 		free(temp);
 		free(bat);
