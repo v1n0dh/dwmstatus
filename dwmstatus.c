@@ -23,7 +23,7 @@
 
 #include <X11/Xlib.h>
 
-char *tzindia = "US/Pacific";
+char *tzone = "US/Pacific";
 int rx_old = 0, tx_old = 0;
 
 static Display *dpy;
@@ -174,7 +174,7 @@ getmemstatus()
 	FILE *pd;
 	char buf[16];
 	char cmd[64];
-	char *mem_icon = "⛓️";
+	char *mem_icon = "💾";
 
 	snprintf(cmd, 64, "free -m | grep ^M | awk {'print ($3/$2)*100'}");
 
@@ -359,7 +359,7 @@ main(void)
 
 	for (;;sleep(1)) {
 		bat = getbattery("/sys/class/power_supply/BAT0");
-		tmin = mktimes("%a %b %d %I:%M%p", tzindia);
+		tmin = mktimes("%a %b %d %I:%M%p", tzone);
 		temp = gettemperature("/sys/class/thermal/thermal_zone0/hwmon2/", "temp1_input");
 		mem = getmemstatus();
 
