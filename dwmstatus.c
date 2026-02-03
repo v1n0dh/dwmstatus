@@ -23,7 +23,7 @@
 
 #include <X11/Xlib.h>
 
-char *tzone = "US/Pacific";
+char *tzone = "America/Los_Angeles";
 int rx_old = 0, tx_old = 0;
 
 static Display *dpy;
@@ -360,7 +360,7 @@ main(void)
 	for (;;sleep(1)) {
 		bat = getbattery("/sys/class/power_supply/BAT0");
 		tmin = mktimes("%a %b %d %I:%M%p", tzone);
-		temp = gettemperature("/sys/class/thermal/thermal_zone0/hwmon2/", "temp1_input");
+		temp = gettemperature("/sys/class/thermal/thermal_zone0/hwmon0/", "temp1_input");
 		mem = getmemstatus();
 
 		iface_name = check__for_iface("alpha0") && check_iface_up("alpha0") ? "alpha0" : "wlp1s0";
